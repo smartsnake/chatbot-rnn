@@ -70,13 +70,13 @@ def sample_main(args):
     print("Creating model...")
     saved_args.batch_size = args.beam_width
     net = Model(saved_args, True)
-    config = tf.ConfigProto()
+    config = tf.compat.v1.ConfigProto()
     config.gpu_options.allow_growth = True
     # Make tensorflow less verbose; filter out info (1+) and warnings (2+) but not errors (3).
     os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
-    with tf.Session(config=config) as sess:
-        tf.global_variables_initializer().run()
-        saver = tf.train.Saver(net.save_variables_list())
+    with tf.compat.v1.Session(config=config) as sess:
+        tf.compat.v1.global_variables_initializer().run()
+        saver = tf.compat.v1.train.Saver(net.save_variables_list())
         # Restore the saved variables, replacing the initialized values.
         print("Restoring weights...")
         saver.restore(sess, model_path)

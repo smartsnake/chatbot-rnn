@@ -3,9 +3,12 @@ from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.framework import ops
-from tensorflow.contrib import rnn
+from tensorflow.compat.v1.nn import rnn_cell as rnn
+#from tensorflow.contrib import rnn
 
 from tensorflow.python.util.nest import flatten
+
+tf.compat.v1.disable_eager_execution()
 
 import numpy as np
 
@@ -93,14 +96,14 @@ def _rnn_state_placeholders(state):
     """Convert RNN state tensors to placeholders, reflecting the same nested tuple structure."""
     # Adapted from @carlthome's comment:
     # https://github.com/tensorflow/tensorflow/issues/2838#issuecomment-302019188
-    if isinstance(state, tf.contrib.rnn.LSTMStateTuple):
+    if isinstance(state, tf.compat.v1.nn.rnn_cell.LSTMStateTuple):
         c, h = state
-        c = tf.placeholder(c.dtype, c.shape, c.op.name)
-        h = tf.placeholder(h.dtype, h.shape, h.op.name)
-        return tf.contrib.rnn.LSTMStateTuple(c, h)
+        c = tf.compat.v1.placeholder(c.dtype, c.shape, c.op.name)
+        h = tf.compat.v1.placeholder(h.dtype, h.shape, h.op.name)
+        return tf.compat.v1.nn.rnn_cell.LSTMStateTuple(c, h)
     elif isinstance(state, tf.Tensor):
         h = state
-        h = tf.placeholder(h.dtype, h.shape, h.op.name)
+        h = tf.compat.v1.placeholder(h.dtype, h.shape, h.op.name)
         return h
     else:
         structure = [_rnn_state_placeholders(x) for x in state]
@@ -144,7 +147,7 @@ class Model():
         # of shape batch_size x seq_length. This shape matches the batches
         # (listed in x_batches and y_batches) constructed in create_batches in utils.py.
         # input_data will receive input batches.
-        self.input_data = tf.placeholder(tf.int32, [args.batch_size, args.seq_length])
+        self.input_data = tf.compat.v1.placeholder(tf.int32, [args.batch_size, args.seq_length])
 
         self.zero_state = cell.zero_state(args.batch_size, tf.float32)
 
@@ -154,24 +157,24 @@ class Model():
         layer_size = args.block_size * args.num_blocks
 
         # Scope our new variables to the scope identifier string "rnnlm".
-        with tf.variable_scope('rnnlm'):
+        with tf.compat.v1.variable_scope('rnnlm'):
             # Create new variable softmax_w and softmax_b for output.
             # softmax_w is a weights matrix from the top layer of the model (of size layer_size)
             # to the vocabulary output (of size vocab_size).
-            softmax_w = tf.get_variable("softmax_w", [layer_size, args.vocab_size])
+            softmax_w = tf.compat.v1.get_variable("softmax_w", [layer_size, args.vocab_size])
             # softmax_b is a bias vector of the ouput characters (of size vocab_size).
-            softmax_b = tf.get_variable("softmax_b", [args.vocab_size])
+            softmax_b = tf.compat.v1.get_variable("softmax_b", [args.vocab_size])
             # Create new variable named 'embedding' to connect the character input to the base layer
             # of the RNN. Its role is the conceptual inverse of softmax_w.
             # It contains the trainable weights from the one-hot input vector to the lowest layer of RNN.
-            embedding = tf.get_variable("embedding", [args.vocab_size, layer_size])
+            embedding = tf.compat.v1.get_variable("embedding", [args.vocab_size, layer_size])
             # Create an embedding tensor with tf.nn.embedding_lookup(embedding, self.input_data).
             # This tensor has dimensions batch_size x seq_length x layer_size.
             inputs = tf.nn.embedding_lookup(embedding, self.input_data)
 
         # TODO: Check arguments parallel_iterations (default uses more memory and less time) and
         # swap_memory (default uses more memory but "minimal (or no) performance penalty")
-        outputs, self.final_state = tf.nn.dynamic_rnn(cell, inputs,
+        outputs, self.final_state = tf.compat.v1.nn.dynamic_rnn(cell, inputs,
                 initial_state=self.initial_state, scope='rnnlm')
         # outputs has shape [batch_size, max_time, cell.output_size] because time_major == false.
         # Do we need to transpose the first two dimensions? (Answer: no, this ruins everything.)
@@ -195,7 +198,7 @@ class Model():
         else:
             # Create a targets placeholder of shape batch_size x seq_length.
             # Targets will be what output is compared against to calculate loss.
-            self.targets = tf.placeholder(tf.int32, [args.batch_size, args.seq_length])
+            self.targets = tf.compat.v1.placeholder(tf.int32, [args.batch_size, args.seq_length])
             # seq2seq.sequence_loss_by_example returns 1D float Tensor containing the log-perplexity
             # for each sequence. (Size is batch_size * seq_length.)
             # Targets are reshaped from a [batch_size x seq_length] tensor to a 1D tensor, of the following layout:
@@ -243,7 +246,7 @@ class Model():
         # embedding, and all of the weights and biases in the MultiRNNCell model.
         # Save only the trainable variables and the placeholders needed to resume training;
         # discard the rest, including optimizer state.
-        save_vars = set(tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='rnnlm'))
+        save_vars = set(tf.compat.v1.get_collection(tf.compat.v1.GraphKeys.GLOBAL_VARIABLES, scope='rnnlm'))
         save_vars.update({self.lr, self.global_epoch_fraction, self.global_seconds_elapsed})
         return list(save_vars)
 
