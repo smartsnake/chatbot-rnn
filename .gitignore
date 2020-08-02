@@ -1,0 +1,12 @@
+
+*.meta
+models/reddit/model.ckpt-4735000.index
+*.data-00000-of-00001
+*.pkl
+models/reddit/checkpoint
+*.zip
+*.index
+models/__MACOSX/reddit/._checkpoint
+*.pyc
+models/__MACOSX/._reddit
+*.DS_Store
