@@ -37,7 +37,8 @@ def main():
                        'noticeably degrading coherence;'
                        'set to <0 to disable relevance masking')
     args = parser.parse_args()
-    sample_main(args)
+    return args
+    #sample_main(args)
 
 def get_paths(input_path):
     if os.path.isfile(input_path):
@@ -55,6 +56,36 @@ def get_paths(input_path):
     else:
         raise ValueError('save_dir is not a valid path.')
     return model_path, os.path.join(save_dir, 'config.pkl'), os.path.join(save_dir, 'chars_vocab.pkl')
+
+def discord_main(args, Input):
+    model_path, config_path, vocab_path = get_paths(args.save_dir)
+    # Arguments passed to sample.py direct us to a saved model.
+    # Load the separate arguments by which that model was previously trained.
+    # That's saved_args. Use those to load the model.
+    with open(config_path, 'rb') as f:
+        saved_args = pickle.load(f)
+    # Separately load chars and vocab from the save directory.
+    with open(vocab_path, 'rb') as f:
+        chars, vocab = pickle.load(f)
+    # Create the model from the saved arguments, in inference mode.
+    print("Creating model...")
+    saved_args.batch_size = args.beam_width
+    net = Model(saved_args, True)
+    config = tf.compat.v1.ConfigProto()
+    config.gpu_options.allow_growth = True
+    # Make tensorflow less verbose; filter out info (1+) and warnings (2+) but not errors (3).
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+
+    response = None
+    with tf.compat.v1.Session(config=config) as sess:
+        tf.compat.v1.global_variables_initializer().run()
+        saver = tf.compat.v1.train.Saver(net.save_variables_list())
+        # Restore the saved variables, replacing the initialized values.
+        print("Restoring weights...")
+        saver.restore(sess, model_path)
+        response = discordbot(net, sess, chars, vocab, args.n, args.beam_width,
+                args.relevance, args.temperature, args.topn, Input)
+    return response
 
 def sample_main(args):
     model_path, config_path, vocab_path = get_paths(args.save_dir)
@@ -82,6 +113,7 @@ def sample_main(args):
         saver.restore(sess, model_path)
         chatbot(net, sess, chars, vocab, args.n, args.beam_width,
                 args.relevance, args.temperature, args.topn)
+        
 
 def initial_state(net, sess):
     # Return freshly initialized model states.
@@ -122,6 +154,32 @@ def possibly_escaped_char(raw_chars):
                 return backspace_seq + new_seq + "".join([' '] * diff_length) + "".join(['\b'] * diff_length)
     return raw_chars[-1]
 
+def discordbot(net, sess, chars, vocab, max_length, beam_width, relevance, temperature, topn, Input_Text):
+    states = initial_state_with_relevance_masking(net, sess, relevance)
+    #while True:
+    user_input = Input_Text
+    user_command_entered, reset, states, relevance, temperature, topn, beam_width = process_user_command(
+        user_input, states, relevance, temperature, topn, beam_width)
+    if reset: states = initial_state_with_relevance_masking(net, sess, relevance)
+    if not user_command_entered:
+        states = forward_text(net, sess, states, relevance, vocab, sanitize_text(vocab, "> " + user_input + "\n>"))
+        computer_response_generator = beam_search_generator(sess=sess, net=net,
+            initial_state=copy.deepcopy(states), initial_sample=vocab[' '],
+            early_term_token=vocab['\n'], beam_width=beam_width, forward_model_fn=forward_with_mask,
+            forward_args={'relevance':relevance, 'mask_reset_token':vocab['\n'], 'forbidden_token':vocab['>'],
+                            'temperature':temperature, 'topn':topn})
+        out_chars = []
+        output = []
+        for i, char_token in enumerate(computer_response_generator):
+            out_chars.append(chars[char_token])
+            output.append(possibly_escaped_char(out_chars))
+            #print(output, end='', flush=False)
+            states = forward_text(net, sess, states, relevance, vocab, chars[char_token])
+            if i >= max_length: break
+        #print(output)
+        states = forward_text(net, sess, states, relevance, vocab, sanitize_text(vocab, "\n> "))
+        return output
+
 def chatbot(net, sess, chars, vocab, max_length, beam_width, relevance, temperature, topn):
     states = initial_state_with_relevance_masking(net, sess, relevance)
     while True:
@@ -137,11 +195,14 @@ def chatbot(net, sess, chars, vocab, max_length, beam_width, relevance, temperat
                 forward_args={'relevance':relevance, 'mask_reset_token':vocab['\n'], 'forbidden_token':vocab['>'],
                                 'temperature':temperature, 'topn':topn})
             out_chars = []
+            output = []
             for i, char_token in enumerate(computer_response_generator):
                 out_chars.append(chars[char_token])
-                print(possibly_escaped_char(out_chars), end='', flush=True)
+                output.append(possibly_escaped_char(out_chars))
+                #print(output, end='', flush=False)
                 states = forward_text(net, sess, states, relevance, vocab, chars[char_token])
                 if i >= max_length: break
+            print(output)
             states = forward_text(net, sess, states, relevance, vocab, sanitize_text(vocab, "\n> "))
 
 def process_user_command(user_input, states, relevance, temperature, topn, beam_width):

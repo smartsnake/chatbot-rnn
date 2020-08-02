@@ -81,7 +81,7 @@ class PartitionedMultiRNNCell(rnn_cell.RNNCell):
             p_outputs = []
             p_states = []
             for p, p_inp in enumerate(p_inputs):
-                with vs.variable_scope("cell_%d_%d" % (l, p)):
+                with vs.variable_scope("cell_%d_%d" % (l, p), reuse=tf.compat.v1.AUTO_REUSE):
                     p_state = state[l][p]
                     cell = layer[p]
                     p_out, new_p_state = cell(p_inp, p_state)
@@ -157,7 +157,7 @@ class Model():
         layer_size = args.block_size * args.num_blocks
 
         # Scope our new variables to the scope identifier string "rnnlm".
-        with tf.compat.v1.variable_scope('rnnlm'):
+        with tf.compat.v1.variable_scope('rnnlm', reuse=tf.compat.v1.AUTO_REUSE):
             # Create new variable softmax_w and softmax_b for output.
             # softmax_w is a weights matrix from the top layer of the model (of size layer_size)
             # to the vocabulary output (of size vocab_size).
