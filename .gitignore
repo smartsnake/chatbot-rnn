@@ -10,3 +10,4 @@ models/__MACOSX/reddit/._checkpoint
 *.pyc
 models/__MACOSX/._reddit
 *.DS_Store
+.env
